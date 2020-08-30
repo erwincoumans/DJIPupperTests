@@ -61,23 +61,14 @@ void setup(void) {
   pinMode(13, OUTPUT);
   digitalWrite(13, HIGH);
 
-  // TODO: TEST ONLY
-  // TODO: Need to start teensy in zero current mode, start robot, then start teensy back up with more current. 
-  // TODO: implement commands in python
   drive.DeactivateAll();
-  
-  drive.ActivateActuator(9);
-  drive.ActivateActuator(10);
-  drive.ActivateActuator(11);
-
-  drive.SetMaxCurrent(5.0);
+  drive.ActivateActuator(0);
+  drive.ActivateActuator(6);
+  drive.SetMaxCurrent(1.0);
   drive.ZeroCurrentPosition();
-  drive.SetCartesianPositions(drive.DefaultCartesianPositions());
-
-  drive.SetCartesianKp({2000.0, 2000.0, 0.0});
-  drive.SetCartesianKd({0.2, 0.2, 0.05});
-
-  drive.SetCartesianPositions(drive.CartesianPositions({0, 0.79, -1.57}));
+  
+  drive.SetPosition(0, 1.0);
+  drive.SetPosition(6, 1.0);
 }
 
 void loop() {
