@@ -14,7 +14,6 @@ class C610Bus {
   static const uint32_t ZERO_TO_THREE_COMMAND_ID = 0x200;
   static const uint32_t FOUR_TO_SEVEN_COMMAND_ID = 0x1FF;
   static const uint32_t RECEIVE_BASE_ID = 0x200;
-  static const uint32_t COUNTS_PER_REV = 8192;
 
   bool is_initialized = false;
   C610 _controllers[SIZE];
