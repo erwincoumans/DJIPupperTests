@@ -53,7 +53,6 @@ FIND_PACKAGE(PythonLibs)
 #add_executable
 add_library(pupper_drive SHARED src/PupperDrive.cpp  src/Kinematics.cpp  src/DriveSystem.cpp src/PID.cpp src/Utils.cpp ${TDS_HDRS})
 
-#target_link_libraries(spherical_joint_test_eigen opengl_window tinyxml2  Eigen3::Eigen ${CMAKE_DL_LIBS})
 target_compile_definitions(pupper_drive PRIVATE -DUSE_SIM)
 target_include_directories(pupper_drive PRIVATE third_party src .pio/libdeps/teensy40/BasicLinearAlgebra ${PYTHON_INCLUDE_DIRS} ${PYTHON_NUMPY_INCLUDE_DIR})
 
