@@ -35,7 +35,9 @@ BLA::Matrix<3> HipPosition(HipLayoutParameters hip_layout_params, uint8_t i) {
               hip_layout_params.z_offset};
     }
     default: {
+#ifndef USE_SIM  
         Serial.println("Error: Invalid leg index for hip position function."); 
+#endif
         return {0, 0, 0};
     }
   }

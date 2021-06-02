@@ -2,7 +2,9 @@
 
 #include <BasicLinearAlgebra.h>
 
+#ifndef USE_SIM
 #include "C610Bus.h"
+#endif
 #include "Kinematics.h"
 #include "PID.h"
 #include "RobotTypes.h"
@@ -11,7 +13,6 @@
 enum class DriveControlMode {
   kIdle,
   kError,  // For robot errors, not coding mistakes.
-  kHoming,
   kPositionControl,
   kCartesianPositionControl,
   kCurrentControl,
@@ -40,8 +41,11 @@ class DriveSystem {
   static const size_t kNumActuators = 12;  // TODO something else with this
 
  private:
+#ifndef USE_SIM
   C610Bus<CAN1> front_bus_;
   C610Bus<CAN2> rear_bus_;
+#else
+#endif
 
   DriveControlMode control_mode_;
 
@@ -53,6 +57,9 @@ class DriveSystem {
   ActuatorCurrentVector last_commanded_current_;
   ActuatorPositionVector cartesian_position_reference_;
   ActuatorVelocityVector cartesian_velocity_reference_;
+
+  ActuatorPositionVector measured_positions_;
+  ActuatorVelocityVector measured_velocities_;
 
   PDGains position_gains_;
   PDGains3x3 cartesian_position_gains_;
@@ -82,41 +89,6 @@ class DriveSystem {
   // Important direction multipliers
   std::array<float, 12> direction_multipliers_; /* */
 
-  /*  Homing parameters begin */
-  // Homed positions of the axes (corresponding to joint limits)
-  ActuatorPositionVector homed_positions_;
-
-  // Abduction joint limit in the direction of homing
-  float abduction_homed_position;
-
-  // Hip joint limit in the direction of homing
-  float hip_homed_position;
-
-  // Knee joint limit in the direction of homing
-  float knee_homed_position;
-
-  // Directions of homing for each axis
-  std::array<float, 12> homing_directions_;
-
-  // Which axes have been homed already
-  std::array<bool, 12> homed_axes_;
-
-  // Which axes are currently homing
-  std::array<bool, 12> homing_axes_;
-
-  // Threshold for detecting collisions with the joint limits during homing
-  float homing_current_threshold = 3.0;
-
-  // Angular velocity in radians/timestep for homing
-  float homing_velocity = 0.0005;
-
-  // Axes grouped into different phases of the homing sequence
-  std::array<int, 4> knee_axes_;
-  std::array<int, 4> hip_axes_;
-  std::array<int, 2> right_abduction_axes_;
-  std::array<int, 2> left_abduction_axes_;
-  /*  Homing parameters end */
-
   // Initialize the two CAN buses
   void InitializeDrive();
 
@@ -136,6 +108,8 @@ class DriveSystem {
 
   // Calculate motor torques for cartesian position control
   BLA::Matrix<12> CartesianPositionControl();
+  std::array<float,12> CartesianPositionControl2();
+
 
   // Check for messages on the CAN bus and run callbacks.
   void CheckForCANMessages();
@@ -145,13 +119,6 @@ class DriveSystem {
 
   // Go into idle mode, which sends 0A to all motors.
   void SetIdle();
-
-  // Home all axes. 
-  void ExecuteHomingSequence();
-
-  // Updates the homing status for the given axes. Returns true iff the given axes are already homed. 
-  template<size_t N>
-  bool CheckHomingStatus(std::array<int, N> axes);
 
   // Set the measured position to the zero point for the actuators.
   void ZeroCurrentPosition();
@@ -166,9 +133,22 @@ class DriveSystem {
   // 
   ActuatorPositionVector DefaultCartesianPositions();
 
+  ActuatorCurrentVector GetLastCommandedCurrents();
+    
   // Sets the cartesian reference positions to the position of the leg taken
   // When all joing angles are zero.
   void SetDefaultCartesianPositions();
+
+  void SetMeasuredPositions(ActuatorPositionVector& measured_positions)
+  {
+    measured_positions_ = measured_positions;
+  }
+
+  void SetMeasuredVelocities(ActuatorVelocityVector& measured_velocities)
+  {
+    measured_velocities_ = measured_velocities;
+  }
+
 
   // Sets the positions for all twelve actuators.
   void SetJointPositions(ActuatorPositionVector pos);
@@ -176,6 +156,9 @@ class DriveSystem {
   // Set position gains all actuators
   void SetPositionKp(float kp);
   void SetPositionKd(float kd);
+
+  void SetCartesianKp(const std::array<float, 3>& kp);
+  void SetCartesianKd(const std::array<float, 3>& kd);
 
   // Set the cartesian space stiffness matrix for the foot. 
   void SetCartesianKp3x3(BLA::Matrix<3, 3> kp);
@@ -227,9 +210,10 @@ class DriveSystem {
   // The current argument has units amps.
   void CommandCurrents(ActuatorCurrentVector currents);
 
+#ifndef USE_SIM
   // Get the C610 controller object corresponding to index i.
   C610 GetController(uint8_t i);
-
+#endif
   // Returns the output shaft's position in [radians].
   float GetActuatorPosition(uint8_t i);
 

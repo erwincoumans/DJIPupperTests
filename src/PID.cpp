@@ -8,11 +8,12 @@ void PD(float &torque_command, float measurement_pos, float measurement_vel,
                    gains.kd * (reference_vel - measurement_vel);
 }
 
+#ifndef USE_SIM  
 Print &operator<<(Print &stream, const PDGains &gains) {
   stream << "kp: " << gains.kp << " kd: " << gains.kd;
   return stream;
 }
-
+#endif
 BLA::Matrix<3> PDControl3(BLA::Matrix<3> measured_position,
                           BLA::Matrix<3> measured_velocity,
                           BLA::Matrix<3> reference_position,

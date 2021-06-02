@@ -1,11 +1,16 @@
 #include "DriveSystem.h"
 
+#ifndef USE_SIM
 #include <ArduinoJson.h>
 #include <Streaming.h>
-
+#endif
 #include "Utils.h"
 
-DriveSystem::DriveSystem() : front_bus_(), rear_bus_() {
+DriveSystem::DriveSystem() 
+#ifndef USE_SIM
+    : front_bus_(), rear_bus_() 
+#endif
+{
   control_mode_ = DriveControlMode::kIdle;
   fault_current_ = 10.0;  // TODO: don't make this so high at default
   fault_position_ = 3.5;  // TODO: make this a param
@@ -14,6 +19,12 @@ DriveSystem::DriveSystem() : front_bus_(), rear_bus_() {
   max_current_ = 0.0;
   position_reference_.fill(0.0);
   velocity_reference_.fill(0.0);
+  ff_force_.Fill(0.);
+  cartesian_velocity_reference_.fill(0.0);
+
+  measured_positions_.fill(0.0);
+  measured_velocities_.fill(0.0);
+
   current_reference_.fill(
       0.0);  // TODO: log the commanded current even when in position PID mode
   active_mask_.fill(false);
@@ -22,92 +33,52 @@ DriveSystem::DriveSystem() : front_bus_(), rear_bus_() {
   cartesian_position_gains_.kp.Fill(0.0);
   cartesian_position_gains_.kd.Fill(0.0);
 
+#ifdef USE_SIM
+  std::array<float, 12> direction_multipliers = {1, 1, 1, 1, 1, 1,
+                                                 1, 1, 1, 1, 1, 1};
+#else
   std::array<float, 12> direction_multipliers = {-1, -1, 1, -1, 1, -1,
                                                  -1, -1, 1, -1, 1, -1};
+#endif
   direction_multipliers_ = direction_multipliers;
-
-  /*  Homing parameters begin */
-  float abduction_homed_position = 0.8384160301;
-  float hip_homed_position = 3.4564099081;
-  float knee_homed_position = 2.9234265;
-  std::array<float, 12> homing_directions = {-1, 1, -1, 1, 1, -1,
-                                             -1, 1, -1, 1, 1, -1};
-  homing_directions_ = homing_directions;
-  ActuatorPositionVector homed_positions = {abduction_homed_position, hip_homed_position, knee_homed_position, abduction_homed_position, hip_homed_position, knee_homed_position,
-                                           abduction_homed_position, hip_homed_position, knee_homed_position, abduction_homed_position, hip_homed_position, knee_homed_position};
-  homed_positions_ = homed_positions;
-  std::array<bool, 12> homed_axes = {false, false, false, false, false, false, 
-                                    false, false, false, false, false, false};
-  homed_axes_ = homed_axes;
-  std::array<bool, 12> homing_axes = {false, false, false, false, false, false, 
-                                    false, false, false, false, false, false};
-  homing_axes_ = homing_axes;
-  homing_current_threshold = 3.0;
-  homing_velocity = 0.0005;
-  std::array<int, 4> knee_axes = {2, 5, 8, 11};
-  knee_axes_ = knee_axes;
-  std::array<int, 4> hip_axes = {1, 4, 7, 10};
-  hip_axes_ = hip_axes;
-  std::array<int, 2> right_abduction_axes = {0, 6};
-  right_abduction_axes_ = right_abduction_axes;
-  std::array<int, 2> left_abduction_axes = {3, 9};
-  left_abduction_axes_ = left_abduction_axes;
-  /*  Homing parameters end */
 
   SetDefaultCartesianPositions();
 }
 
 void DriveSystem::CheckForCANMessages() {
+#ifndef USE_SIM
   front_bus_.PollCAN();
   rear_bus_.PollCAN();
+#else
+#endif
 }
 
 DriveControlMode DriveSystem::CheckErrors() {
   for (size_t i = 0; i < kNumActuators; i++) {
     // check positions
     if (abs(GetActuatorPosition(i)) > fault_position_) {
+#ifndef USE_SIM
       Serial << "actuator[" << i << "] hit fault position: " << fault_position_
              << endl;
+#endif
       return DriveControlMode::kError;
     }
     // check velocities
     if (abs(GetActuatorVelocity(i)) > fault_velocity_) {
+#ifndef USE_SIM
       Serial << "actuator[" << i << "] hit fault velocity: " << fault_velocity_
              << endl;
+#endif
       return DriveControlMode::kError;
     }
   }
   return DriveControlMode::kIdle;
 }
+#include <stdio.h>
 
-void DriveSystem::SetIdle() { control_mode_ = DriveControlMode::kIdle; }
-
-void DriveSystem::ExecuteHomingSequence() {
-  float homing_current = 6.0;
-  control_mode_ = DriveControlMode::kHoming;
-  for (size_t i = 0; i < kNumActuators; i++) {
-    homed_axes_[i] = false;
-    homing_axes_[i] = false;
-  }
-  SetActivations({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
-  SetMaxCurrent(homing_current);
-}
-
-template<size_t N>
-bool DriveSystem::CheckHomingStatus(std::array<int, N> axes) {
-  // Check if any axes are not homed
-  for (int i : axes) {
-    // If at least one axis is not homed, continue homing all axes
-    if (!homed_axes_[i]) {
-      for (int j : axes) {
-        homing_axes_[j] = true;
-      }
-      return false;
-    }
-  }
-  // If all axes are homed, update the corresponding entries in homing_axes_
-  for (int i : axes) { homing_axes_[i] = false; }
-  return true;
+void DriveSystem::SetIdle() { 
+    printf("Setting Idle\n");
+    control_mode_ = DriveControlMode::kIdle; 
 }
 
 void DriveSystem::ZeroCurrentPosition() {
@@ -116,6 +87,10 @@ void DriveSystem::ZeroCurrentPosition() {
 
 void DriveSystem::SetZeroPositions(ActuatorPositionVector zero) {
   zero_position_ = zero;
+}
+
+ActuatorCurrentVector DriveSystem::GetLastCommandedCurrents() {
+    return last_commanded_current_;
 }
 
 ActuatorPositionVector DriveSystem::DefaultCartesianPositions() {
@@ -139,9 +114,31 @@ void DriveSystem::SetJointPositions(ActuatorPositionVector pos) {
   position_reference_ = pos;
 }
 
-void DriveSystem::SetPositionKp(float kp) { position_gains_.kp = kp; }
+void DriveSystem::SetPositionKp(float kp) { 
+    position_gains_.kp = kp; 
+}
 
-void DriveSystem::SetPositionKd(float kd) { position_gains_.kd = kd; }
+void DriveSystem::SetPositionKd(float kd) { 
+    position_gains_.kd = kd; 
+}
+
+void DriveSystem::SetCartesianKp(const std::array<float, 3>& kp3) {
+  BLA::Matrix<3, 3> kp;
+  kp.Fill(0.0);
+  kp(0, 0) = kp3[0];
+  kp(1, 1) = kp3[1];
+  kp(2, 2) = kp3[2];
+  SetCartesianKp3x3(kp);
+}
+
+void DriveSystem::SetCartesianKd(const std::array<float, 3>& kd3) {
+  BLA::Matrix<3, 3> kd;
+  kd.Fill(0.);
+  kd(0, 0) = kd3[0];
+  kd(1, 1) = kd3[1];
+  kd(2, 2) = kd3[2];
+  SetCartesianKd3x3(kd);
+}
 
 void DriveSystem::SetCartesianKp3x3(BLA::Matrix<3, 3> kp) {
   cartesian_position_gains_.kp = kp;
@@ -176,6 +173,10 @@ void DriveSystem::SetFaultCurrent(float fault_current) {
 
 void DriveSystem::SetMaxCurrent(float max_current) {
   max_current_ = max_current;
+}
+
+std::array<float,12> DriveSystem::CartesianPositionControl2() {
+    return Utils::VectorToArray<12, 12>(CartesianPositionControl());
 }
 
 BLA::Matrix<12> DriveSystem::CartesianPositionControl() {
@@ -223,55 +224,14 @@ void DriveSystem::Update() {
 
   switch (control_mode_) {
     case DriveControlMode::kError: {
+#ifndef USE_SIM
       Serial << "ERROR" << endl;
+#endif
       CommandIdle();
       break;
     }
     case DriveControlMode::kIdle: {
       CommandIdle();
-      break;
-    }
-    case DriveControlMode::kHoming: {
-      ActuatorCurrentVector pd_current;
-      for (size_t i = 0; i < kNumActuators; i++) {
-        if (homing_axes_[i] && !homed_axes_[i]) {
-          position_reference_[i] = position_reference_[i] + homing_directions_[i] * homing_velocity;
-        }
-
-        PD(pd_current[i], GetActuatorPosition(i), GetActuatorVelocity(i),
-           position_reference_[i], velocity_reference_[i], position_gains_);
-
-        if (homing_axes_[i] && !homed_axes_[i]) {
-          if (abs(pd_current[i]) >= homing_current_threshold) {
-            homed_axes_[i] = true;
-
-            // set axis zero
-            zero_position_[i] = GetRawActuatorPosition(i) - direction_multipliers_[i] * homing_directions_[i] * homed_positions_[i];
-
-            // set position setpoint
-            position_reference_[i] = homing_directions_[i] * homed_positions_[i];
-          }
-        }
-      }
-      CommandCurrents(pd_current);
-
-      // Homing sequence
-      // Phase 0: hip joints
-      if (CheckHomingStatus(hip_axes_)) {
-        // Phase 1: knee joints
-        if (CheckHomingStatus(knee_axes_)) {
-          // Phase 2: right abduction joints
-          if (CheckHomingStatus(right_abduction_axes_)) {
-            for (int i : right_abduction_axes_) { position_reference_[i] = 0; }
-            // Phase 3: left abduction joints
-            if (CheckHomingStatus(left_abduction_axes_)) {
-              // Finish homing sequence and hold the current pose
-              for (int i : left_abduction_axes_) { position_reference_[i] = 0; }
-              for (int i : hip_axes_) { position_reference_[i] = homing_directions_[i] * PI / 2; }
-            }
-          }
-        }
-      }
       break;
     }
     case DriveControlMode::kPositionControl: {
@@ -309,7 +269,9 @@ void DriveSystem::CommandCurrents(ActuatorCurrentVector currents) {
       Utils::Constrain(currents, -max_current_, max_current_);
   if (Utils::Maximum(current_command) > fault_current_ ||
       Utils::Minimum(current_command) < -fault_current_) {
+#ifndef USE_SIM
     Serial << "Requested current too large. Erroring out." << endl;
+#endif
     control_mode_ = DriveControlMode::kError;
     return;
   }
@@ -327,6 +289,7 @@ void DriveSystem::CommandCurrents(ActuatorCurrentVector currents) {
   std::array<int32_t, kNumActuators> currents_mA =
       Utils::ConvertToFixedPoint(current_command, 1000);
 
+#ifndef USE_SIM
   // Send current commands down the CAN buses
   front_bus_.CommandTorques(currents_mA[0], currents_mA[1], currents_mA[2],
                             currents_mA[3], C610Subbus::kIDZeroToThree);
@@ -336,8 +299,11 @@ void DriveSystem::CommandCurrents(ActuatorCurrentVector currents) {
                            currents_mA[9], C610Subbus::kIDZeroToThree);
   rear_bus_.CommandTorques(currents_mA[10], currents_mA[11], 0, 0,
                            C610Subbus::kIDFourToSeven);
+#else
+#endif
 }
 
+#ifndef USE_SIM
 C610 DriveSystem::GetController(uint8_t i) {
   // TODO put these constants somewhere else
   if (i >= 0 && i <= 5) {
@@ -350,9 +316,13 @@ C610 DriveSystem::GetController(uint8_t i) {
     return C610();
   }
 }
-
+#endif
 float DriveSystem::GetRawActuatorPosition(uint8_t i) {
+#ifndef USE_SIM
   return GetController(i).Position();
+#else
+   return measured_positions_[i];
+#endif
 }
 
 ActuatorPositionVector DriveSystem::GetRawActuatorPositions() {
@@ -377,26 +347,38 @@ ActuatorPositionVector DriveSystem::GetActuatorPositions() {
 }
 
 float DriveSystem::GetActuatorVelocity(uint8_t i) {
+#ifndef USE_SIM
   return GetController(i).Velocity() * direction_multipliers_[i];
+#else
+    return measured_velocities_[i];
+#endif
 }
 
 float DriveSystem::GetActuatorCurrent(uint8_t i) {
+#ifndef USE_SIM
   return GetController(i).Current() * direction_multipliers_[i];
+#else
+    return 0;
+#endif
 }
 
 float DriveSystem::GetTotalElectricalPower() {
   float power = 0.0;
+#ifndef USE_SIM  
   for (uint8_t i = 0; i < kNumActuators; i++) {
     power += GetController(i).ElectricalPower();
   }
+#endif
   return power;
 }
 
 float DriveSystem::GetTotalMechanicalPower() {
   float power = 0.0;
+#ifndef USE_SIM  
   for (uint8_t i = 0; i < kNumActuators; i++) {
     power += GetController(i).MechanicalPower();
   }
+#endif
   return power;
 }
 
@@ -429,6 +411,7 @@ BLA::Matrix<3> DriveSystem::LegFeedForwardForce(uint8_t i) {
 }
 
 void DriveSystem::PrintHeader(DrivePrintOptions options) {
+#ifndef USE_SIM
   if (options.time) {
     Serial << "T" << options.delimiter;
   }
@@ -457,9 +440,11 @@ void DriveSystem::PrintHeader(DrivePrintOptions options) {
     }
   }
   Serial << endl;
+#endif
 }
 
 void DriveSystem::PrintMsgPackStatus(DrivePrintOptions options) {
+#ifndef USE_SIM
   StaticJsonDocument<2048> doc;
   // 21 micros to put this doc together
   doc["ts"] = millis();
@@ -494,9 +479,11 @@ void DriveSystem::PrintMsgPackStatus(DrivePrintOptions options) {
   Serial.write(num_bytes & 0xff);
   serializeMsgPack(doc, Serial);
   Serial.println();
+#endif
 }
 
 void DriveSystem::PrintStatus(DrivePrintOptions options) {
+#ifndef USE_SIM
   char delimiter = options.delimiter;
   if (options.time) {
     Serial << millis() << delimiter;
@@ -534,11 +521,14 @@ void DriveSystem::PrintStatus(DrivePrintOptions options) {
   }
   Serial << endl;
   Serial.flush();
+#endif
 }
 
 BLA::Matrix<kNumDriveSystemDebugValues> DriveSystem::DebugData() {
+
   uint32_t write_index = 0;
   BLA::Matrix<kNumDriveSystemDebugValues> output;
+  #ifndef USE_SIM
   output(write_index++) = millis();
   for (uint8_t i = 0; i < kNumActuators; i++) {
     output(write_index++) = GetActuatorPosition(i);
@@ -549,5 +539,7 @@ BLA::Matrix<kNumDriveSystemDebugValues> DriveSystem::DebugData() {
     output(write_index++) = current_reference_[i];
     output(write_index++) = last_commanded_current_[i];
   }
+#endif
   return output;
+
 }

@@ -1,7 +1,12 @@
 // Cartesian PD Control
 #pragma once
 
+#ifndef USE_SIM
 #include <Arduino.h>
+#else
+#include <stdint.h>
+
+#endif
 #include <BasicLinearAlgebra.h>
 
 struct LegParameters {
