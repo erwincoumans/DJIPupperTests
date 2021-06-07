@@ -1,19 +1,19 @@
 //#include "src/CommandInterpreter.h"
 
-#include <pybind11/operators.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 #include <stdio.h>
 #include <iostream>
 
+#ifdef USE_SIM
 #include <chrono>
 #include <thread>
 #include <nlohmann/json.hpp>
+#include <pybind11/operators.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+namespace py = pybind11;
 
 
 #include "DriveSystem.h"
-
-namespace py = pybind11;
 
 
 nlohmann::json set_object_sphere_cmd = {
@@ -138,3 +138,4 @@ int main(int argc, char* argv[])
     setup();
 }
 
+#endif

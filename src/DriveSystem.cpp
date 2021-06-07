@@ -1,4 +1,5 @@
 #include "DriveSystem.h"
+#define DISABLE_SAFETY
 
 #ifndef USE_SIM
 #include <ArduinoJson.h>
@@ -61,7 +62,9 @@ DriveControlMode DriveSystem::CheckErrors() {
       Serial << "actuator[" << i << "] hit fault position: " << fault_position_
              << endl;
 #endif
+#ifndef DISABLE_SAFETY
       return DriveControlMode::kError;
+#endif
     }
     // check velocities
     if (abs(GetActuatorVelocity(i)) > fault_velocity_) {
@@ -69,7 +72,9 @@ DriveControlMode DriveSystem::CheckErrors() {
       Serial << "actuator[" << i << "] hit fault velocity: " << fault_velocity_
              << endl;
 #endif
+#ifndef DISABLE_SAFETY
       return DriveControlMode::kError;
+#endif
     }
   }
   return DriveControlMode::kIdle;
@@ -219,7 +224,9 @@ BLA::Matrix<12> DriveSystem::CartesianPositionControl() {
 void DriveSystem::Update() {
   // If there are errors, put the system in the error state.
   if (CheckErrors() == DriveControlMode::kError) {
+#ifndef DISABLE_SAFETY
     control_mode_ = DriveControlMode::kError;
+#endif
   }
 
   switch (control_mode_) {
@@ -272,7 +279,9 @@ void DriveSystem::CommandCurrents(ActuatorCurrentVector currents) {
 #ifndef USE_SIM
     Serial << "Requested current too large. Erroring out." << endl;
 #endif
+#ifndef DISABLE_SAFETY
     control_mode_ = DriveControlMode::kError;
+#endif
     return;
   }
   // Set disabled motors to zero current
